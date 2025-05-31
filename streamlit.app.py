@@ -33,7 +33,6 @@ with st.form("entry_form"):
     platforms = st.multiselect("Supported Platforms", ["Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
     tags = st.text_input("Tags (comma-separated keywords)")
 
-    summary = st.text_area("Summary (1-2 sentences)")
     if st.form_submit_button("🧠 Generate Summary with AI"):
         if project_name and audience:
             summary_prompt = f"Write a 1-2 sentence summary for a project called '{project_name}', which targets {audience} and works on platforms like {', '.join(platforms)}. The tags are: {tags}."
@@ -41,15 +40,13 @@ with st.form("entry_form"):
                 model="gpt-4",
                 messages=[{"role": "user", "content": summary_prompt}]
             )
-            summary = summary_response.choices[0].message.content.strip()
-            st.session_state.generated_summary = summary
-            st.success("AI-generated summary inserted.")
-    if "generated_summary" in st.session_state:
-        summary = st.session_state.generated_summary
+            st.session_state.generated_summary = summary_response.choices[0].message.content.strip()
+            st.success("AI-generated summary inserted below. You can review and edit it.")
+
+    summary = st.text_area("Summary (1-2 sentences)", value=st.session_state.get("generated_summary", ""))
 
     features = st.text_area("Key Features / Capabilities (markdown bullets)")
 
-    use_cases = st.text_area("Primary Use Cases")
     if st.form_submit_button("🧠 Generate Use Cases with AI"):
         if project_name and audience:
             use_prompt = f"List primary use cases for a project named '{project_name}' that runs on {', '.join(platforms)} and serves {audience}. Tags: {tags}."
@@ -57,11 +54,10 @@ with st.form("entry_form"):
                 model="gpt-4",
                 messages=[{"role": "user", "content": use_prompt}]
             )
-            use_cases = use_response.choices[0].message.content.strip()
-            st.session_state.generated_use_cases = use_cases
-            st.success("AI-generated use cases inserted.")
-    if "generated_use_cases" in st.session_state:
-        use_cases = st.session_state.generated_use_cases
+            st.session_state.generated_use_cases = use_response.choices[0].message.content.strip()
+            st.success("AI-generated use cases inserted below. You can review and edit it.")
+
+    use_cases = st.text_area("Primary Use Cases", value=st.session_state.get("generated_use_cases", ""))
 
     url = st.text_input("Website or Project URL (optional)")
     contact_email = st.text_input("Optional Contact Email")
