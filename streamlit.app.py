@@ -1,11 +1,11 @@
 import streamlit as st
-import openai
 import pandas as pd
-from supabase import create_client, Client
+from datetime import datetime
+import io
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
-import io
-from datetime import datetime
+from supabase import create_client, Client
+from openai import OpenAI
 
 # ---- CONFIG ---- #
 st.set_page_config(page_title="Knowverse Agent", layout="centered")
@@ -17,7 +17,7 @@ supabase_url = st.secrets["supabase_url"]
 supabase_key = st.secrets["supabase_key"]
 admin_key = st.secrets["admin_key"]
 
-openai.api_key = openai_api_key
+client = OpenAI(api_key=openai_api_key)
 
 # ---- LOAD DATA FROM SUPABASE ---- #
 @st.cache_resource
@@ -33,7 +33,7 @@ features = st.text_area("Key Features / Capabilities (markdown bullets)")
 if st.button("✨ Generate Summary"):
     if project_name:
         prompt = f"Write a 1-2 sentence summary for a project called '{project_name}' that will be listed in an AI knowledgebase."
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}]
         )
@@ -44,7 +44,7 @@ if st.button("✨ Generate Summary"):
 if st.button("✨ Generate Use Cases"):
     if project_name and features:
         prompt = f"List 1 or 2 practical use cases for a project called '{project_name}' with features like: {features}."
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}]
         )
