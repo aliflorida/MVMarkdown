@@ -1,10 +1,10 @@
 import streamlit as st
-import openai
 import pandas as pd
 from supabase import create_client, Client
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 import io
+from openai import OpenAI
 
 # ---- CONFIG ---- #
 st.set_page_config(page_title="Knowverse Agent", layout="centered")
@@ -14,6 +14,9 @@ st.title("🌐 Knowverse: AI Knowledgebase PDF Generator")
 openai_api_key = st.secrets["openai_key"]
 supabase_url = st.secrets["supabase_url"]
 supabase_key = st.secrets["supabase_key"]
+
+# ---- OPENAI CLIENT ---- #
+client = OpenAI(api_key=openai_api_key)
 
 # ---- LOAD DATA FROM SUPABASE ---- #
 @st.cache_resource
@@ -70,7 +73,6 @@ else:
     row_data = df.loc[selected_row]
 
     # ---- GPT PROCESSING ---- #
-    openai.api_key = openai_api_key
     prompt = f"""
     You are a report assistant. Format the following knowledgebase entry into a clean markdown document suitable for PDF export and upload to a Multiverse knowledge base:
 
@@ -79,7 +81,7 @@ else:
 
     if st.button("Generate Report Text"):
         with st.spinner("Calling GPT..."):
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}]
             )
