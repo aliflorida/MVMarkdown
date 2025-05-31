@@ -37,18 +37,26 @@ with st.form("entry_form"):
     submit = st.form_submit_button("Submit Entry")
 
     if submit:
-        supabase.table("responses").insert({
-            "project_name": project_name,
-            "summary": summary,
-            "features": features,
-            "use_cases": use_cases,
-            "platforms": ", ".join(platforms),
-            "audience": audience,
-            "url": url,
-            "contact_email": contact_email,
-            "tags": tags
-        }).execute()
-        st.success("✅ Thank you for your submission! You'll receive an update via email when your knowledgebase entry goes live.")
+        if not project_name or not summary:
+            st.warning("Please fill in at least the project name and summary.")
+        else:
+            payload = {
+                "project_name": project_name,
+                "summary": summary,
+                "features": features,
+                "use_cases": use_cases,
+                "platforms": ", ".join(platforms),
+                "audience": audience,
+                "url": url,
+                "contact_email": contact_email,
+                "tags": tags
+            }
+            st.write("Attempting to insert:", payload)
+            try:
+                supabase.table("responses").insert(payload).execute()
+                st.success("✅ Thank you for your submission! You'll receive an update via email when your knowledgebase entry goes live.")
+            except Exception as e:
+                st.error(f"❌ Error submitting entry: {e}")
 
 # ---- DISPLAY EXISTING RESPONSES ---- #
 data = supabase.table("responses").select("*").execute()
