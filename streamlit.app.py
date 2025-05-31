@@ -6,7 +6,6 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 import io
 from datetime import datetime
-import base64
 
 # ---- CONFIG ---- #
 st.set_page_config(page_title="Knowverse Agent", layout="centered")
@@ -30,34 +29,8 @@ st.subheader("✍️ Submit a New Knowledgebase Entry")
 with st.form("entry_form"):
     project_name = st.text_input("Project / Business Name")
     summary = st.text_area("Summary (1-2 sentences)")
-    if st.form_submit_button("Generate AI Summary") and project_name:
-        prompt = f"Write a professional 1-2 sentence summary for a business named '{project_name}' for an AI knowledge base."
-        openai.api_key = openai_api_key
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        summary = response.choices[0].message.content
-        st.session_state["generated_summary"] = summary
-    if "generated_summary" in st.session_state:
-        summary = st.session_state["generated_summary"]
-        st.text_area("Suggested Summary", summary)
-
     features = st.text_area("Key Features / Capabilities (markdown bullets)")
-    use_cases = st.text_area("Primary Use Cases")
-    if st.form_submit_button("Generate AI Use Cases") and summary:
-        prompt = f"List 1 or 2 primary use cases for a business with this summary: '{summary}'"
-        openai.api_key = openai_api_key
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        use_cases = response.choices[0].message.content
-        st.session_state["generated_use_cases"] = use_cases
-    if "generated_use_cases" in st.session_state:
-        use_cases = st.session_state["generated_use_cases"]
-        st.text_area("Suggested Use Cases", use_cases)
-
+    use_cases = st.text_area("Primary Use Cases (1-2 max)")
     platforms = st.multiselect("Supported Platforms", ["Multiverse", "Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
     audience = st.text_input("Target Audience")
     url = st.text_input("Website or Project URL (optional)")
@@ -69,7 +42,6 @@ with st.form("entry_form"):
     if submit:
         submission_date = datetime.utcnow().isoformat()
 
-        # Compose Markdown for internal use
         markdown_text = f"""
 ## {project_name}
 
@@ -88,7 +60,6 @@ with st.form("entry_form"):
 **Tags**: {tags}
         """
 
-        # Generate PDF
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=LETTER)
         text_obj = c.beginText(40, 750)
@@ -98,21 +69,17 @@ with st.form("entry_form"):
         c.showPage()
         c.save()
         buffer.seek(0)
-
-        # Upload PDF to Supabase storage
         pdf_bytes = buffer.getvalue()
+
         file_name = f"{project_name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.pdf"
         pdf_path = f"knowledgebase_pdfs/{file_name}"
-        res = supabase.storage.from_("pdfs").upload(pdf_path, pdf_bytes, {"content-type": "application/pdf"})
 
-        # Get public URL
+        upload_response = supabase.storage.from_("pdfs").upload(pdf_path, pdf_bytes, {"content-type": "application/pdf"})
         public_pdf_url = supabase.storage.from_("pdfs").get_public_url(pdf_path)
 
-        # Store the PDF in session state for download
         st.session_state["pdf_bytes"] = pdf_bytes
         st.session_state["pdf_filename"] = file_name
 
-        # Insert record
         response = supabase.table("responses").insert({
             "project_name": project_name,
             "summary": summary,
@@ -128,10 +95,10 @@ with st.form("entry_form"):
             "pdf_url": public_pdf_url
         }).execute()
 
-        if response.status_code == 201:
+        if response.data:
             st.success("✅ Your entry has been submitted to the Knowverse.\n\n🧾 A copy of your submission has been saved.")
         else:
-            st.error(f"❌ Error submitting entry: {response.data}")
+            st.error(f"❌ Error submitting entry: {response}")
 
 # ---- PDF DOWNLOAD ---- #
 if "pdf_bytes" in st.session_state:
