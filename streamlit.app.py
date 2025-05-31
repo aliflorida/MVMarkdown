@@ -1,67 +1,70 @@
 import streamlit as st
 import openai
-import gspread
 import pandas as pd
-from oauth2client.service_account import ServiceAccountCredentials
+from supabase import create_client, Client
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 import io
 
 # ---- CONFIG ---- #
-st.set_page_config(page_title="Form to PDF Agent", layout="centered")
-st.title("📝 Google Form to PDF Generator")
+st.set_page_config(page_title="Knowverse Agent", layout="centered")
+st.title("🌐 Knowverse: AI Knowledgebase PDF Generator")
 
 # ---- API & CREDENTIAL INPUT ---- #
 openai_api_key = st.text_input("🔑 OpenAI API Key", type="password")
-gsheet_json = st.file_uploader("📁 Upload Google Service Account Credentials (.json)", type="json")
-sheet_url = st.text_input("🔗 Google Sheet URL")
+supabase_url = st.text_input("🔗 Supabase URL")
+supabase_key = st.text_input("🔐 Supabase Service Role Key", type="password")
 
-if openai_api_key and gsheet_json and sheet_url:
-    # ---- SHEET SETUP ---- #
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(gsheet_json.name, scope)
-    client = gspread.authorize(creds)
-    sheet = client.open_by_url(sheet_url).sheet1
-    data = pd.DataFrame(sheet.get_all_records())
+# ---- LOAD DATA FROM SUPABASE ---- #
+@st.cache_resource
+def get_supabase():
+    return create_client(supabase_url, supabase_key)
 
-    st.success("✅ Google Sheet Loaded Successfully")
+if openai_api_key and supabase_url and supabase_key:
+    supabase = get_supabase()
+    data = supabase.table("responses").select("*").execute()
+    df = pd.DataFrame(data.data)
 
-    # ---- SELECT ROW TO PROCESS ---- #
-    selected_row = st.selectbox("Select a response row to generate PDF", data.index)
-    row_data = data.loc[selected_row]
+    if df.empty:
+        st.warning("No responses found in Supabase table 'responses'.")
+    else:
+        st.success("✅ Supabase data loaded successfully")
 
-    # ---- GPT PROCESSING ---- #
-    openai.api_key = openai_api_key
-    prompt = f"""
-    You are a report assistant. Format the following form response into a professional summary:
+        selected_row = st.selectbox("Select a response row to generate PDF", df.index)
+        row_data = df.loc[selected_row]
 
-    {row_data.to_dict()}
+        # ---- GPT PROCESSING ---- #
+        openai.api_key = openai_api_key
+        prompt = f"""
+        You are a report assistant. Format the following form response into a professional summary:
 
-    Write it as a report suitable for PDF output.
-    """
+        {row_data.to_dict()}
 
-    if st.button("🧠 Generate Report Text"):
-        with st.spinner("Calling GPT..."):
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            report_text = response.choices[0].message.content
-            st.text_area("📝 Generated Report", report_text, height=300)
+        Write it as a report suitable for PDF output.
+        """
 
-            # ---- PDF GENERATION ---- #
-            buffer = io.BytesIO()
-            c = canvas.Canvas(buffer, pagesize=LETTER)
-            text_obj = c.beginText(40, 750)
-            for line in report_text.split('\n'):
-                text_obj.textLine(line)
-            c.drawText(text_obj)
-            c.showPage()
-            c.save()
+        if st.button("🧠 Generate Report Text"):
+            with st.spinner("Calling GPT..."):
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                report_text = response.choices[0].message.content
+                st.text_area("📝 Generated Report", report_text, height=300)
 
-            st.download_button(
-                label="📄 Download PDF",
-                data=buffer.getvalue(),
-                file_name=f"response_{selected_row}.pdf",
-                mime="application/pdf"
-            )
+                # ---- PDF GENERATION ---- #
+                buffer = io.BytesIO()
+                c = canvas.Canvas(buffer, pagesize=LETTER)
+                text_obj = c.beginText(40, 750)
+                for line in report_text.split('\n'):
+                    text_obj.textLine(line)
+                c.drawText(text_obj)
+                c.showPage()
+                c.save()
+
+                st.download_button(
+                    label="📄 Download PDF",
+                    data=buffer.getvalue(),
+                    file_name=f"response_{selected_row}.pdf",
+                    mime="application/pdf"
+                )
