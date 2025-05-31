@@ -28,6 +28,12 @@ if "generated_summary" not in st.session_state:
     st.session_state.generated_summary = ""
 if "generated_use_cases" not in st.session_state:
     st.session_state.generated_use_cases = ""
+if "submission_success" not in st.session_state:
+    st.session_state.submission_success = False
+if "submitted_pdf" not in st.session_state:
+    st.session_state.submitted_pdf = None
+if "submitted_filename" not in st.session_state:
+    st.session_state.submitted_filename = ""
 
 # ---- AI GENERATION BUTTONS ---- #
 st.subheader("🧠 AI Assistance")
@@ -128,10 +134,22 @@ with st.form("entry_form"):
 
             st.success("✅ Your entry has been submitted to the Knowverse.")
             st.info("🧾 A copy of your submission has been saved.")
-            st.download_button("📄 Download Your PDF", data=pdf_bytes, file_name=pdf_path, mime="application/pdf")
+
+            st.session_state.submission_success = True
+            st.session_state.submitted_pdf = pdf_bytes
+            st.session_state.submitted_filename = pdf_path
 
         except Exception as e:
             st.error(f"❌ Error submitting entry: {e}")
+
+# ---- DOWNLOAD AFTER FORM ---- #
+if st.session_state.submission_success and st.session_state.submitted_pdf:
+    st.download_button(
+        "📄 Download Your PDF",
+        data=st.session_state.submitted_pdf,
+        file_name=st.session_state.submitted_filename,
+        mime="application/pdf"
+    )
 
 # ---- ADMIN VIEW ---- #
 if st.query_params.get("admin") == admin_key:
