@@ -113,12 +113,17 @@ with st.form("entry_form"):
             pdf_bytes = buffer.getvalue()
             pdf_path = f"{project_name.replace(' ', '_')}_{now}.pdf"
 
-            # Upload to Supabase bucket with upsert
-            res = supabase.storage.from_("pdfs").upload(
+            # Upload PDF (remove existing first if needed)
+            storage = supabase.storage.from_("pdfs")
+            try:
+                storage.remove([pdf_path])
+            except Exception:
+                pass  # ignore file not found
+
+            res = storage.upload(
                 pdf_path,
                 pdf_bytes,
-                {"content-type": "application/pdf"},
-                upsert=True
+                {"content-type": "application/pdf"}
             )
 
             st.success("✅ Your entry has been submitted to the Knowverse.")
