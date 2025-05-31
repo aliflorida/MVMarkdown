@@ -100,8 +100,12 @@ with st.form("entry_form"):
         file_name = f"{project_name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.pdf"
         pdf_path = f"knowledgebase_pdfs/{file_name}"
 
-        upload_response = supabase.storage.from_("pdfs").upload(pdf_path, pdf_bytes, {"content-type": "application/pdf"})
-        public_pdf_url = supabase.storage.from_("pdfs").get_public_url(pdf_path)
+        try:
+            upload_response = supabase.storage.from_("pdfs").upload(pdf_path, pdf_bytes, {"content-type": "application/pdf"})
+            public_pdf_url = supabase.storage.from_("pdfs").get_public_url(pdf_path)
+        except Exception as e:
+            st.error(f"❌ Upload failed: {e}")
+            public_pdf_url = ""
 
         st.session_state["pdf_bytes"] = pdf_bytes
         st.session_state["pdf_filename"] = file_name
