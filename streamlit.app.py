@@ -29,14 +29,42 @@ supabase = get_supabase()
 st.subheader("✍️ Submit a New Knowledgebase Entry")
 with st.form("entry_form"):
     project_name = st.text_input("Project / Business Name")
-    summary = st.text_area("Summary (1-2 sentences)")
-    features = st.text_area("Key Features / Capabilities (markdown bullets)")
-    use_cases = st.text_area("Primary Use Cases")
-    platforms = st.multiselect("Supported Platforms", ["Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
     audience = st.text_input("Target Audience")
+    platforms = st.multiselect("Supported Platforms", ["Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
+    tags = st.text_input("Tags (comma-separated keywords)")
+
+    summary = st.text_area("Summary (1-2 sentences)")
+    if st.form_submit_button("🧠 Generate Summary with AI"):
+        if project_name and audience:
+            summary_prompt = f"Write a 1-2 sentence summary for a project called '{project_name}', which targets {audience} and works on platforms like {', '.join(platforms)}. The tags are: {tags}."
+            summary_response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": summary_prompt}]
+            )
+            summary = summary_response.choices[0].message.content.strip()
+            st.session_state.generated_summary = summary
+            st.success("AI-generated summary inserted.")
+    if "generated_summary" in st.session_state:
+        summary = st.session_state.generated_summary
+
+    features = st.text_area("Key Features / Capabilities (markdown bullets)")
+
+    use_cases = st.text_area("Primary Use Cases")
+    if st.form_submit_button("🧠 Generate Use Cases with AI"):
+        if project_name and audience:
+            use_prompt = f"List primary use cases for a project named '{project_name}' that runs on {', '.join(platforms)} and serves {audience}. Tags: {tags}."
+            use_response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": use_prompt}]
+            )
+            use_cases = use_response.choices[0].message.content.strip()
+            st.session_state.generated_use_cases = use_cases
+            st.success("AI-generated use cases inserted.")
+    if "generated_use_cases" in st.session_state:
+        use_cases = st.session_state.generated_use_cases
+
     url = st.text_input("Website or Project URL (optional)")
     contact_email = st.text_input("Optional Contact Email")
-    tags = st.text_input("Tags (comma-separated keywords)")
     submit = st.form_submit_button("Submit Entry")
 
     if submit:
@@ -58,6 +86,8 @@ with st.form("entry_form"):
             try:
                 supabase.table("responses").insert(payload).execute()
                 st.success("✅ Thank you for your submission! You'll receive an update via email when your knowledgebase entry goes live.")
+                st.session_state.pop("generated_summary", None)
+                st.session_state.pop("generated_use_cases", None)
             except Exception as e:
                 st.error(f"❌ Error submitting entry: {e}")
 
