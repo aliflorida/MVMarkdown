@@ -17,6 +17,8 @@ supabase_url = st.secrets["supabase_url"]
 supabase_key = st.secrets["supabase_key"]
 admin_key = st.secrets["admin_key"]
 
+openai.api_key = openai_api_key
+
 # ---- LOAD DATA FROM SUPABASE ---- #
 @st.cache_resource
 def get_supabase():
@@ -24,13 +26,37 @@ def get_supabase():
 
 supabase = get_supabase()
 
+# ---- USER INPUT STAGE 1: PRE-FORM INPUTS ---- #
+project_name = st.text_input("Project / Business Name")
+features = st.text_area("Key Features / Capabilities (markdown bullets)")
+
+if st.button("✨ Generate Summary"):
+    if project_name:
+        prompt = f"Write a 1-2 sentence summary for a project called '{project_name}' that will be listed in an AI knowledgebase."
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        st.session_state["generated_summary"] = response.choices[0].message.content.strip()
+    else:
+        st.warning("Please enter a project name first.")
+
+if st.button("✨ Generate Use Cases"):
+    if project_name and features:
+        prompt = f"List 1 or 2 practical use cases for a project called '{project_name}' with features like: {features}."
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        st.session_state["generated_use_cases"] = response.choices[0].message.content.strip()
+    else:
+        st.warning("Please enter project name and features first.")
+
 # ---- SUBMISSION FORM ---- #
 st.subheader("✍️ Submit a New Knowledgebase Entry")
 with st.form("entry_form"):
-    project_name = st.text_input("Project / Business Name")
-    summary = st.text_area("Summary (1-2 sentences)")
-    features = st.text_area("Key Features / Capabilities (markdown bullets)")
-    use_cases = st.text_area("Primary Use Cases (1-2 max)")
+    summary = st.text_area("Summary (1-2 sentences)", value=st.session_state.get("generated_summary", ""))
+    use_cases = st.text_area("Primary Use Cases (1-2 max)", value=st.session_state.get("generated_use_cases", ""))
     platforms = st.multiselect("Supported Platforms", ["Multiverse", "Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
     audience = st.text_input("Target Audience")
     url = st.text_input("Website or Project URL (optional)")
