@@ -30,7 +30,7 @@ st.subheader("✍️ Submit a New Knowledgebase Entry")
 with st.form("entry_form"):
     project_name = st.text_input("Project / Business Name")
     summary = st.text_area("Summary (1-2 sentences)")
-    if st.button("Generate AI Summary") and project_name:
+    if st.form_submit_button("Generate AI Summary") and project_name:
         prompt = f"Write a professional 1-2 sentence summary for a business named '{project_name}' for an AI knowledge base."
         openai.api_key = openai_api_key
         response = openai.ChatCompletion.create(
@@ -45,8 +45,8 @@ with st.form("entry_form"):
 
     features = st.text_area("Key Features / Capabilities (markdown bullets)")
     use_cases = st.text_area("Primary Use Cases")
-    if st.button("Generate AI Use Cases") and summary:
-        prompt = f"List the primary use cases for a business with this summary: '{summary}'"
+    if st.form_submit_button("Generate AI Use Cases") and summary:
+        prompt = f"List 1 or 2 primary use cases for a business with this summary: '{summary}'"
         openai.api_key = openai_api_key
         response = openai.ChatCompletion.create(
             model="gpt-4",
@@ -58,7 +58,7 @@ with st.form("entry_form"):
         use_cases = st.session_state["generated_use_cases"]
         st.text_area("Suggested Use Cases", use_cases)
 
-    platforms = st.multiselect("Supported Platforms", ["Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
+    platforms = st.multiselect("Supported Platforms", ["Multiverse", "Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
     audience = st.text_input("Target Audience")
     url = st.text_input("Website or Project URL (optional)")
     contact_email = st.text_input("Optional Contact Email")
@@ -108,6 +108,10 @@ with st.form("entry_form"):
         # Get public URL
         public_pdf_url = supabase.storage.from_("pdfs").get_public_url(pdf_path)
 
+        # Store the PDF in session state for download
+        st.session_state["pdf_bytes"] = pdf_bytes
+        st.session_state["pdf_filename"] = file_name
+
         # Insert record
         response = supabase.table("responses").insert({
             "project_name": project_name,
@@ -125,9 +129,18 @@ with st.form("entry_form"):
         }).execute()
 
         if response.status_code == 201:
-            st.success("✅ Entry submitted successfully! We'll update you via email about the knowledge base and your place in it.")
+            st.success("✅ Your entry has been submitted to the Knowverse.\n\n🧾 A copy of your submission has been saved.")
         else:
             st.error(f"❌ Error submitting entry: {response.data}")
+
+# ---- PDF DOWNLOAD ---- #
+if "pdf_bytes" in st.session_state:
+    st.download_button(
+        label="📄 Download Your PDF Copy",
+        data=st.session_state["pdf_bytes"],
+        file_name=st.session_state["pdf_filename"],
+        mime="application/pdf"
+    )
 
 # ---- ADMIN VIEWER ---- #
 if st.query_params.get("admin") == admin_key:
