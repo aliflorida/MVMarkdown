@@ -1,74 +1,89 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import io
+import datetime
+from openai import OpenAI
+from supabase import create_client
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
-from supabase import create_client, Client
-from openai import OpenAI
 
 # ---- CONFIG ---- #
 st.set_page_config(page_title="Knowverse Agent", layout="centered")
 st.title("🌐 Knowverse: AI Knowledgebase PDF Generator")
 
-# ---- LOAD SECRETS ---- #
+# ---- SECRETS ---- #
 openai_api_key = st.secrets["openai_key"]
 supabase_url = st.secrets["supabase_url"]
 supabase_key = st.secrets["supabase_key"]
-admin_key = st.secrets["admin_key"]
+admin_key = st.secrets.get("admin_key", "")
 
+# ---- SUPABASE ---- #
+supabase = create_client(supabase_url, supabase_key)
+
+# ---- OPENAI CLIENT ---- #
 client = OpenAI(api_key=openai_api_key)
 
-# ---- LOAD DATA FROM SUPABASE ---- #
-@st.cache_resource
-def get_supabase():
-    return create_client(supabase_url, supabase_key)
+# ---- SESSION STATE FOR AI HELP ---- #
+if "generated_summary" not in st.session_state:
+    st.session_state.generated_summary = ""
+if "generated_use_cases" not in st.session_state:
+    st.session_state.generated_use_cases = ""
 
-supabase = get_supabase()
-
-# ---- USER INPUT STAGE 1: PRE-FORM INPUTS ---- #
+# ---- AI GENERATION BUTTONS ---- #
+st.subheader("🧠 AI Assistance")
 project_name = st.text_input("Project / Business Name")
-features = st.text_area("Key Features / Capabilities (markdown bullets)")
+features = st.text_area("Key Features / Capabilities")
 
 if st.button("✨ Generate Summary"):
     if project_name:
-        prompt = f"Write a 1-2 sentence summary for a project called '{project_name}' that will be listed in an AI knowledgebase."
+        prompt = f"Write a professional 1-2 sentence summary for a project called '{project_name}'."
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}]
         )
-        st.session_state["generated_summary"] = response.choices[0].message.content.strip()
-    else:
-        st.warning("Please enter a project name first.")
+        st.session_state.generated_summary = response.choices[0].message.content.strip()
 
 if st.button("✨ Generate Use Cases"):
     if project_name and features:
-        prompt = f"List 1 or 2 practical use cases for a project called '{project_name}' with features like: {features}."
+        prompt = f"Suggest 1 or 2 primary use cases for a project called '{project_name}' with features: {features}."
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}]
         )
-        st.session_state["generated_use_cases"] = response.choices[0].message.content.strip()
-    else:
-        st.warning("Please enter project name and features first.")
+        st.session_state.generated_use_cases = response.choices[0].message.content.strip()
 
-# ---- SUBMISSION FORM ---- #
+# ---- FORM ---- #
 st.subheader("✍️ Submit a New Knowledgebase Entry")
 with st.form("entry_form"):
-    summary = st.text_area("Summary (1-2 sentences)", value=st.session_state.get("generated_summary", ""))
-    use_cases = st.text_area("Primary Use Cases (1-2 max)", value=st.session_state.get("generated_use_cases", ""))
+    summary = st.text_area("Summary", value=st.session_state.generated_summary)
+    use_cases = st.text_area("Use Cases", value=st.session_state.generated_use_cases)
     platforms = st.multiselect("Supported Platforms", ["Multiverse", "Web", "VR", "Discord", "WhatsApp", "Horizon Worlds", "Mobile", "Desktop"])
     audience = st.text_input("Target Audience")
     url = st.text_input("Website or Project URL (optional)")
     contact_email = st.text_input("Optional Contact Email")
     tags = st.text_input("Tags (comma-separated keywords)")
-    language = st.selectbox("Language", ["English", "Spanish", "French", "German", "Other"])
+    language = st.selectbox("Language", ["English", "Spanish", "French", "German", "Portuguese", "Chinese"])
     submit = st.form_submit_button("Submit Entry")
 
     if submit:
-        submission_date = datetime.utcnow().isoformat()
+        try:
+            now = datetime.datetime.utcnow().isoformat()
+            supabase.table("responses").insert({
+                "project_name": project_name,
+                "summary": summary,
+                "features": features,
+                "use_cases": use_cases,
+                "platforms": ", ".join(platforms),
+                "audience": audience,
+                "url": url,
+                "contact_email": contact_email,
+                "tags": tags,
+                "language": language,
+                "created_at": now
+            }).execute()
 
-        markdown_text = f"""
+            # Generate markdown
+            markdown = f"""
 ## {project_name}
 
 **Summary**  
@@ -84,70 +99,41 @@ with st.form("entry_form"):
 **Target Audience**: {audience}  
 **Project URL**: {url}  
 **Tags**: {tags}
-        """
+"""
+            # Create PDF
+            buffer = io.BytesIO()
+            c = canvas.Canvas(buffer, pagesize=LETTER)
+            text_obj = c.beginText(40, 750)
+            for line in markdown.split('\n'):
+                text_obj.textLine(line)
+            c.drawText(text_obj)
+            c.showPage()
+            c.save()
 
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=LETTER)
-        text_obj = c.beginText(40, 750)
-        for line in markdown_text.split('\n'):
-            text_obj.textLine(line)
-        c.drawText(text_obj)
-        c.showPage()
-        c.save()
-        buffer.seek(0)
-        pdf_bytes = buffer.getvalue()
+            pdf_bytes = buffer.getvalue()
+            pdf_path = f"{project_name.replace(' ', '_')}_{now}.pdf"
 
-        file_name = f"{project_name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.pdf"
-        pdf_path = f"knowledgebase_pdfs/{file_name}"
+            # Upload to Supabase bucket with upsert
+            res = supabase.storage.from_("pdfs").upload(
+                pdf_path,
+                pdf_bytes,
+                {"content-type": "application/pdf"},
+                upsert=True
+            )
 
-        try:
-            upload_response = supabase.storage.from_("pdfs").upload(pdf_path, pdf_bytes, {"content-type": "application/pdf"})
-            public_pdf_url = supabase.storage.from_("pdfs").get_public_url(pdf_path)
+            st.success("✅ Your entry has been submitted to the Knowverse.")
+            st.info("🧾 A copy of your submission has been saved.")
+            st.download_button("📄 Download Your PDF", data=pdf_bytes, file_name=pdf_path, mime="application/pdf")
+
         except Exception as e:
-            st.error(f"❌ Upload failed: {e}")
-            public_pdf_url = ""
+            st.error(f"❌ Error submitting entry: {e}")
 
-        st.session_state["pdf_bytes"] = pdf_bytes
-        st.session_state["pdf_filename"] = file_name
-
-        response = supabase.table("responses").insert({
-            "project_name": project_name,
-            "summary": summary,
-            "features": features,
-            "use_cases": use_cases,
-            "platforms": ", ".join(platforms),
-            "audience": audience,
-            "url": url,
-            "contact_email": contact_email,
-            "tags": tags,
-            "language": language,
-            "submission_date": submission_date,
-            "pdf_url": public_pdf_url
-        }).execute()
-
-        if response.data:
-            st.success("✅ Your entry has been submitted to the Knowverse.\n\n🧾 A copy of your submission has been saved.")
-        else:
-            st.error(f"❌ Error submitting entry: {response}")
-
-# ---- PDF DOWNLOAD ---- #
-if "pdf_bytes" in st.session_state:
-    st.download_button(
-        label="📄 Download Your PDF Copy",
-        data=st.session_state["pdf_bytes"],
-        file_name=st.session_state["pdf_filename"],
-        mime="application/pdf"
-    )
-
-# ---- ADMIN VIEWER ---- #
+# ---- ADMIN VIEW ---- #
 if st.query_params.get("admin") == admin_key:
-    st.subheader("🧠 Admin: View All Responses")
+    st.subheader("🔒 Admin Viewer")
     data = supabase.table("responses").select("*").execute()
     df = pd.DataFrame(data.data)
     if df.empty:
-        st.info("No responses found.")
+        st.info("No responses found in Supabase table 'responses'.")
     else:
-        st.dataframe(df)
-        selected_row = st.selectbox("Select a response row to view PDF", df.index)
-        row_data = df.loc[selected_row]
-        st.markdown(f"[📄 View PDF]({row_data['pdf_url']})")
+        st.dataframe(df.sort_values("created_at", ascending=False))
