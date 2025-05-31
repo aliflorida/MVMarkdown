@@ -1,5 +1,5 @@
-streamlit
-openai>=1.0.0
-pandas
-supabase
-reportlab
+streamlit>=1.31.0
+pandas>=2.0.0
+openai>=1.2.0
+supabase>=1.0.3
+reportlab>=4.0.4
