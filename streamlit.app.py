@@ -5,6 +5,7 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 import io
 from openai import OpenAI
+import base64
 
 # ---- CONFIG ---- #
 st.set_page_config(page_title="Knowverse Agent", layout="centered")
@@ -18,7 +19,7 @@ supabase_key = st.secrets["supabase_key"]
 # ---- OPENAI CLIENT ---- #
 client = OpenAI(api_key=openai_api_key)
 
-# ---- LOAD DATA FROM SUPABASE ---- #
+# ---- SUPABASE ---- #
 @st.cache_resource
 def get_supabase():
     return create_client(supabase_url, supabase_key)
@@ -80,10 +81,54 @@ with st.form("entry_form"):
             }
             st.write("Attempting to insert:", payload)
             try:
-                supabase.table("responses").insert(payload).execute()
-                st.success("✅ Thank you for your submission! You'll receive an update via email when your knowledgebase entry goes live.")
-                st.session_state.pop("generated_summary", None)
-                st.session_state.pop("generated_use_cases", None)
+                # ---- Generate Markdown Report with GPT ---- #
+                report_prompt = f"""
+                You are a report assistant. Format the following knowledgebase entry into a clean markdown document suitable for PDF export and upload to a Multiverse knowledge base:
+
+                {payload}
+                """
+                with st.spinner("Generating markdown report and PDF..."):
+                    response = client.chat.completions.create(
+                        model="gpt-4",
+                        messages=[{"role": "user", "content": report_prompt}]
+                    )
+                    report_text = response.choices[0].message.content
+
+                    # ---- Generate PDF ---- #
+                    buffer = io.BytesIO()
+                    c = canvas.Canvas(buffer, pagesize=LETTER)
+                    text_obj = c.beginText(40, 750)
+                    for line in report_text.split('\n'):
+                        text_obj.textLine(line)
+                    c.drawText(text_obj)
+                    c.showPage()
+                    c.save()
+
+                    buffer.seek(0)
+                    file_bytes = buffer.read()
+                    file_name = f"{project_name.replace(' ', '_')}.pdf"
+
+                    # ---- Upload to Supabase Storage ---- #
+                    supabase.storage.from_('pdfs').upload(file=file_bytes, path=file_name, file_options={"content-type": "application/pdf"})
+                    public_url = f"{supabase_url}/storage/v1/object/public/pdfs/{file_name}"
+
+                    # ---- Save to responses table with PDF URL ---- #
+                    payload["pdf_url"] = public_url
+                    supabase.table("responses").insert(payload).execute()
+
+                    st.success("✅ Your entry has been submitted to the Knowverse.")
+                    st.markdown("🧾 A copy of your submission has been saved.")
+                    st.download_button(
+                        label="📄 Download Your Submission as PDF",
+                        data=file_bytes,
+                        file_name=file_name,
+                        mime="application/pdf"
+                    )
+                    st.markdown(f"[🔗 View PDF in Supabase Storage]({public_url})")
+
+                    st.session_state.pop("generated_summary", None)
+                    st.session_state.pop("generated_use_cases", None)
+
             except Exception as e:
                 st.error(f"❌ Error submitting entry: {e}")
 
